@@ -1,0 +1,38 @@
+#!/bin/sh
+
+# rescan-scsi-bus
+# echo "scsi add-single-device 0 0 0 0" > /proc/scsi/scsi
+# echo "scsi remove-single-device 0 0 0 0" > /proc/scsi/scsi
+# echo "- - -" > /sys/class/scsi_host/hosth/scan
+
+VER="v0.1"
+
+function check_permit()
+{
+    [ "`whoami`" != "root" ] && echo "permission deny, run it with: sudo $0" && exit 1
+}
+
+function usage()
+{
+    printf "Usage: $0
+[-r] -- rescan scsi bus
+[-h|--help] -- print this help"
+}
+
+function  main()
+{
+    case "$1" in
+        -r)
+            ls /sys/class/scsi_host/host0/scan && \
+            echo "- - -" > /sys/class/scsi_host/host0/scan
+            exit $?
+            ;;
+        *)
+            usage
+            exit 0
+            ;;
+    esac
+}
+
+check_permit
+main "$@"

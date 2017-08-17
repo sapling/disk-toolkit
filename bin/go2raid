@@ -1,0 +1,156 @@
+#!/bin/sh
+
+function print_usage()
+{
+ echo
+ echo " Usage: $0 cmd [argments]"
+ echo "---------------------------------------------------------------------------"
+ echo " cmd argments description"
+ echo " ======== ====================== ==========================================="
+ echo " info : Show all info about raid card"
+ echo " log : Show log of raid card"
+ echo " clearlog : clear log of raid card"
+ echo " raid : Show raid info"
+ echo " disk : Show all physical disks connect to raid card"
+ echo " cache : Show cache policy of raid card"
+ echo " diskcache : Show physical disk cache policy"
+ echo " bbu : Show bbu info"
+ echo " rate : Show rebuild rate, default is 30%"
+ echo " setrate [rate] : Set rebuild rate, be careful"
+ echo " setcache [policy] : Set cache policy,maybe WT|WB|RA|NORA|ADRA|Cached|Direct|CachedBadBBU|NoCachedBadBBU"
+ echo " setdiskcache [enable|disable] : Enable or disable physical disk cache "
+ echo " help : Print this help info"
+ echo "=========================================================================="
+ echo "support for HP&LSI Raid-Card"
+}
+
+
+hptag=`/sbin/lspci |grep -i raid|grep -i Hewlett|wc -l`
+lsitag=`/sbin/lspci |grep -i raid|grep -i Mega|wc -l`
+if [ $lsitag -gt 0 ];then
+    megacli="/opt/MegaRAID/MegaCli/MegaCli64"
+    if [ ! -f $megacli ];then
+       echo "you need to install MegaCli first. run sudo yum install MegaCli"
+       exit
+    fi
+elif [ $hptag -gt 0 ];then
+    hpssacli="/usr/local/bin/hpssacli"
+    if [ ! -f $hpssacli ];then
+        hpssacli="/usr/sbin/hpssacli"
+        if [ ! -f $hpssacli ];then
+            echo "you need to install hpssacli first. run sudo yum install hpssacli"
+            exit
+        fi
+    fi 
+else
+    echo "The Raid-Card could not be identified"
+    exit
+fi
+
+CMD=`echo $1 | tr [A-Z] [a-z]`
+if [ -z $CMD ];then
+  /sbin/lspci | grep RAID
+fi
+if [ $lsitag -gt 0 ];then
+  case $CMD in
+  info)
+  sudo $megacli -AdpAllInfo -aALL
+  ;;
+  log)
+  sudo $megacli -FwTermLog -Dsply -aALL 
+  ;;
+  clearlog)
+  sudo $megacli -FwTermLog -Clear -aALL 
+  ;;
+  raid)
+  sudo $megacli -LDInfo -Lall -aALL
+  ;;
+  disk)
+  sudo $megacli -PDList -aALL
+  ;;
+  cache)
+  sudo $megacli -LDGetProp -Cache -LALL -aALL
+  ;;
+  diskcache)
+  sudo $megacli -LDGetProp -DskCache -LALL -aALL
+  ;;
+  bbu)
+  sudo $megacli -AdpBbuCmd -aALL
+  ;;
+  rate)
+  sudo $megacli -AdpGetProp RebuildRate -aAll
+  ;;
+  setrate)
+  sudo $megacli -AdpSetProp RebuildRate $2 -aALL
+  ;;
+  setcache)
+  sudo $megacli -LDSetProp $2 -Lall -aALL
+  ;;
+  setdiskcache)
+  if [ $2 == "enable" ];then
+    sudo $megacli -LDSetProp EnDskCache -LAll -aAll
+  elif [ $2 == "disable" ];then
+    sudo $megacli -LDSetProp DisDskCache -LAll -aAll
+  fi
+  ;;
+  *)
+  print_usage
+  ;;
+  esac
+
+elif [ $hptag -gt 0 ];then
+  tmpslot=`sudo hpssacli ctrl all show status | grep 'Smart Array'|awk '{ print $6 }'`
+
+  case $CMD in
+  info)
+  sudo $hpssacli ctrl all show detail
+  sudo $hpssacli ctrl all show config
+  ;;
+  log)
+  sudo $hpssacli ctrl all diag file=/tmp/diag.zip
+  sudo unzip /tmp/diag.zip -d /tmp
+  sudo less /tmp/ADUReport.txt 
+  ;;
+  clearlog)
+  echo "hp raid no this function"
+  ;;
+  raid)
+  sudo $hpssacli controller slot=$tmpslot logicaldrive all show detail
+  sudo $hpssacli ctrl all show config
+  ;;
+  disk)
+  sudo $hpssacli controller slot=$tmpslot physicaldrive all show detail
+  ;;
+  cache)
+  sudo $hpssacli controller slot=$tmpslot logicaldrive all show detail
+  sudo $hpssacli ctrl all show detail|egrep "Drive Write Cache:|No-Battery Write Cache:"
+  ;;
+  diskcache)
+  sudo $hpssacli ctrl all show detail|grep -i 'Drive Write Cache:'
+  ;;
+  bbu)
+  sudo $hpssacli ctrl all show detail|grep -i 'Battery'
+  ;;
+  rate)
+  sudo $hpssacli ctrl all show detail|grep -i 'Rebuild Priority:'
+  ;;
+  setrate)
+  sudo $hpssacli ctrl  slot=$tmpslot modify rebuildpriority="$2"
+  ;;
+  setcache)
+  echo sudo $hpssacli ctrl  slot=$tmpslot array B modify ssdsmartpath=disable
+  echo sudo $hpssacli ctrl  slot=$tmpslot logicaldrive 2 modify caching=enable
+  echo sudo $hpssacli ctrl  slot=$tmpslot modify cacheratio=10/90
+  ;;
+  setdiskcache)
+  if [ $2 == "enable" ];then
+    sudo $hpssacli ctrl  slot=$tmpslot modify drivewritecache=enable
+  elif [ $2 == "disable" ];then
+    sudo $hpssacli ctrl  slot=$tmpslot modify drivewritecache=disable
+  fi
+  ;;
+  *)
+  print_usage
+  ;;
+  esac
+fi

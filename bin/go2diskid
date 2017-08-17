@@ -1,0 +1,65 @@
+#!/bin/sh
+
+# Display drive bay for disks connected to SAS expander backplane
+
+VER="v0.1"
+
+function check_permit()
+{
+    [ "`whoami`" != "root" ] && echo "permission deny, run it with: sudo $0" && exit 1
+}
+
+function usage()
+{
+    printf "Usage: $0 -- print disks bay id
+[-h|--help] -- print this help
+[-r BayId] -- remove disk"
+}
+
+function disk_by_bay()
+{
+    local remove_bay_id="$1"    
+
+    for name in /sys/block/* ; do
+        npath=$(readlink -f $name)
+        while [ $npath != "/" ] ; do
+            npath=$(dirname $npath)
+            ep=$(basename $npath)
+            if [ -e $npath/sas_device/$ep/bay_identifier ] ; then
+                bay=$(cat $npath/sas_device/$ep/bay_identifier)
+                model=$(cat $npath/sas_device/$ep/device/target*/0:*/model)
+                rev=$(cat $npath/sas_device/$ep/device/target*/0:*/rev)
+                echo "$name has BayID: $bay  DiskModel: $model DiskVer: $rev"
+
+                if [ "X$bay" == "X$remove_bay_id" ] ; then
+                    local scsi=$(ls $npath/sas_device/$ep/device/target*/0:*/delete)
+                    echo remove BayID: $remove_bay_id scsiPath: $scsi
+                    echo 1 > "$scsi"
+                fi
+                break
+            fi
+        done
+    done
+}
+
+function  main()
+{
+    case "$1" in
+        h|help|-h|--help)
+            usage
+            exit 0
+            ;;
+        -r)
+            shift
+            disk_by_bay "$1"
+            exit $?
+            ;;
+        *)
+            disk_by_bay
+            exit $?
+            ;;
+    esac
+}
+
+check_permit
+main "$@"
