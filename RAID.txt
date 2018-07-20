@@ -1,0 +1,64 @@
+#!/bin/sh
+
+lsitag=`/sbin/lspci |grep -i raid|grep -i Mega|wc -l`
+hptag=`/sbin/lspci |grep -i raid|grep -i Hewlett|wc -l`
+
+if [ $lsitag -gt 0 ];then
+    #查看log
+    # /opt/MegaRAID/MegaCli/MegaCli64 -FwTermLog dsply -aALL
+
+    #查看BBU状态
+    # /opt/MegaRAID/MegaCli/MegaCli64 -AdpBbuCmd -GetBbuStatus -aALL
+
+    #删除阵列
+    # /opt/MegaRAID/MegaCli/MegaCli64 -CfgLdDel -L1 –aALL
+
+    #标记硬盘位置
+    # /opt/MegaRAID/MegaCli/MegaCli64  -PdLocate -start -physdrv[8:1] -aALL
+    # /opt/MegaRAID/MegaCli/MegaCli64  -PdLocate -stop -physdrv[8:1] -aALL
+
+    #配置raid5
+    # /opt/MegaRAID/MegaCli/MegaCli64 -CfgLdAdd -r5[32:0,32:1,32:2,32:3,32:4,32:5] WB RA Direct CachedBadBBU -a0
+    # /opt/MegaRAID/MegaCli/MegaCli64 -CfgLdAdd -r5[8:2,8:3,8:4,8:5,8:6,8:7] WB RA Direct CachedBadBBU -a0
+
+    #配置raid10
+    # /opt/MegaRAID/MegaCli/MegaCli64 -CfgSpanAdd -r10 -Array0[32:0,32:1] -Array1[32:2,32:3] -Array2[32:4,32:5] WB RA Direct CachedBadBBU -a0
+
+    #禁用Disk cache
+    /opt/MegaRAID/MegaCli/MegaCli64 -LDSetProp DisDskCache -LALL -aALL
+
+    #慎用，修改读写策略
+    /opt/MegaRAID/MegaCli/MegaCli64  -LDSetProp CachedBadBBU -lall -aALL
+    /opt/MegaRAID/MegaCli/MegaCli64  -LDSetProp WB -lall -aALL
+    /opt/MegaRAID/MegaCli/MegaCli64  -LDSetProp RA -lall -aALL
+    /opt/MegaRAID/MegaCli/MegaCli64  -LDSetProp Direct -lall -aALL
+
+    #rebuild级别调整，默认30%
+    /opt/MegaRAID/MegaCli/MegaCli64 -AdpSetProp RebuildRate 10 -aALL
+
+    #查看读写策略
+    /opt/MegaRAID/MegaCli/MegaCli64  -ldinfo -lall -aALL
+elif [ $hptag -gt 0 ];then
+    # raid 管理
+    # /usr/sbin/hpssacli ctrl slot=0 array B delete forced
+    # /usr/sbin/hpssacli ctrl slot=0 create type=ld drives=1I:3:3,1I:3:4,2I:3:5,2I:3:6,2I:3:7,2I:3:8 raid=5
+
+    #禁用Disk cache
+    /usr/sbin/hpssacli ctrl slot=0 modify drivewritecache=disable
+
+    #写cache，读写cache比例
+    /usr/sbin/hpssacli ctrl slot=0 array A modify ssdsmartpath=disable
+    /usr/sbin/hpssacli ctrl slot=0 logicaldrive 1 modify caching=enable
+    /usr/sbin/hpssacli ctrl slot=0 array B modify ssdsmartpath=disable
+    /usr/sbin/hpssacli ctrl slot=0 logicaldrive 2 modify caching=enable
+    /usr/sbin/hpssacli ctrl slot=0 modify cacheratio=30/70
+
+    #读写策略
+    /usr/sbin/hpssacli ctrl slot=0 modify nobatterywritecache=enable <<EOF
+y
+EOF
+    /usr/sbin/hpssacli ctrl slot=0 modify powermode=maxperformance
+
+    #rebuild级别调整
+    /usr/sbin/hpssacli ctrl slot=0 modify rebuildpriority=low
+fi
